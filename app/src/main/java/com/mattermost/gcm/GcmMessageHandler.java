@@ -23,7 +23,7 @@ public class GcmMessageHandler extends GcmListenerService {
 
     @Override
     public void onMessageReceived(String from, Bundle data) {
-        createNotification("Mattermost", data.getString("message"));
+        createNotification(getResources().getString(R.string.app_short_name), data.getString("message"));
         super.onMessageReceived(from, data);
     }
 

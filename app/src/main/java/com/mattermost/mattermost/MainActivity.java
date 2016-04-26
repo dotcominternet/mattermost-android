@@ -4,23 +4,19 @@
  */
 package com.mattermost.mattermost;
 
+import android.app.AlertDialog;
 import android.app.ProgressDialog;
+import android.content.DialogInterface;
 import android.content.Intent;
 import android.net.Uri;
-import android.os.AsyncTask;
-import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.util.Log;
+import android.view.KeyEvent;
 import android.webkit.CookieManager;
-import android.webkit.ValueCallback;
+import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
-import android.webkit.WebResourceRequest;
-import android.webkit.WebResourceError;
-import android.app.AlertDialog;
-import android.content.DialogInterface;
-import android.view.KeyEvent;
 
 import com.google.android.gms.gcm.GoogleCloudMessaging;
 import com.mattermost.model.User;
@@ -28,13 +24,9 @@ import com.mattermost.service.IResultListener;
 import com.mattermost.service.MattermostService;
 import com.mattermost.service.Promise;
 
-
-import java.net.HttpCookie;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ThreadPoolExecutor;
-import java.io.InputStreamReader;
 import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
 
 
 public class MainActivity extends WebViewActivity {
@@ -65,7 +57,11 @@ public class MainActivity extends WebViewActivity {
         String url = service.getBaseUrl();
         if (!url.endsWith("/"))
             url += "/";
-        url += "channels/town-square";
+        if (isLoggedIn()) {
+            url += "channels/town-square";
+        } else {
+            url += "login";
+        }
         webView.loadUrl(url);
 
         dialog = new ProgressDialog(this);
@@ -134,23 +130,21 @@ public class MainActivity extends WebViewActivity {
                 }
 
                 // Check to see if we need to attach the device Id
-                if (url.toLowerCase().endsWith("/channels/town-square")) {
-                    if (isLoggedIn() && !MattermostService.service.isAttached()) {
-                        Log.i("MainActivity", "Attempting to attach device id");
-                        MattermostService.service.init(MattermostService.service.getBaseUrl());
-                        MattermostService.service.attachDevice()
-                                .then(new IResultListener<User>() {
-                                    @Override
-                                    public void onResult(Promise<User> promise) {
-                                        if (promise.getError() != null) {
-                                            Log.e("AttachDeviceId", promise.getError());
-                                        } else {
-                                            Log.i("AttachDeviceId", "Attached device_id to session");
-                                            MattermostService.service.SetAttached();
-                                        }
+                if (isLoggedIn() && !MattermostService.service.isAttached()) {
+                    Log.i("MainActivity", "Attempting to attach device id");
+                    MattermostService.service.init(MattermostService.service.getBaseUrl());
+                    MattermostService.service.attachDevice()
+                            .then(new IResultListener<User>() {
+                                @Override
+                                public void onResult(Promise<User> promise) {
+                                    if (promise.getError() != null) {
+                                        Log.e("AttachDeviceId", promise.getError());
+                                    } else {
+                                        Log.i("AttachDeviceId", "Attached device_id to session");
+                                        MattermostService.service.SetAttached();
                                     }
-                                });
-                    }
+                                }
+                            });
                 }
             }
 
@@ -265,7 +259,7 @@ public class MainActivity extends WebViewActivity {
             return false;
         if (cookies.trim().isEmpty())
             return false;
-        if (!cookies.contains("MMTOKEN"))
+        if (!(cookies.contains("MMTOKEN") || cookies.contains("MMAUTHTOKEN")))
             return false;
         return true;
     }
@@ -277,8 +271,15 @@ public class MainActivity extends WebViewActivity {
 
         MattermostService.service.logout();
 
+        String url = service.getBaseUrl();
+        if (!url.endsWith("/"))
+            url += "/";
+        url += "login";
+        webView.loadUrl(url);
+        /*
         Intent intent = new Intent(this, SelectTeamActivity.class);
         startActivityForResult(intent, SelectTeamActivity.START_CODE);
         finish();
+        */
     }
 }

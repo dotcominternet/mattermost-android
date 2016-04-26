@@ -7,25 +7,26 @@ package com.mattermost.service;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.preference.PreferenceManager;
-import android.util.Log;
+import android.webkit.CookieManager;
 
 import com.mattermost.mattermost.R;
 import com.mattermost.model.User;
 import com.mattermost.service.jacksonconverter.JacksonConverterFactory;
 import com.mattermost.service.jacksonconverter.PromiseConverterFactory;
+import com.squareup.okhttp.Interceptor;
 import com.squareup.okhttp.MediaType;
 import com.squareup.okhttp.OkHttpClient;
-import com.squareup.okhttp.ResponseBody;
+import com.squareup.okhttp.Request;
+import com.squareup.okhttp.Response;
 
-import java.net.CookiePolicy;
-import java.net.CookieStore;
+import java.io.IOException;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
-import retrofit.Callback;
 import retrofit.Retrofit;
 import retrofit.http.Body;
 import retrofit.http.POST;
-
 
 public class MattermostService {
 
@@ -56,7 +57,32 @@ public class MattermostService {
         return preferences.getBoolean("loggedIn", false);
     }
 
+    // all this is hax
+    public String getToken(){
+        String baseUrl = service.getBaseUrl();
+        if (baseUrl == null) {
+            return "";
+        }
+
+        String cookies = CookieManager.getInstance().getCookie(baseUrl);
+
+        if (cookies == null)
+            return "";
+        if (cookies.trim().isEmpty())
+            return "";
+
+        Pattern r = Pattern.compile("(MMAUTHTOKEN|MMTOKEN)=([^\\;]+);?\\s?");
+        Matcher m = r.matcher(cookies);
+
+        if (m.find()) {
+            return "BEARER " + m.group(2);
+        }
+
+        return "";
+    }
+
     public String getBaseUrl() {
+        baseUrl = "https://chat.ladbrokes.net.au/ladbrokes";
         if (baseUrl == null) {
             baseUrl = preferences.getString("baseUrl", null);
         }
@@ -70,6 +96,18 @@ public class MattermostService {
     public void init(String baseUrl) {
         this.baseUrl = baseUrl;
         preferences.edit().putString("baseUrl", baseUrl).commit();
+
+        client.networkInterceptors().add(new Interceptor() {
+            @Override
+            public Response intercept(Chain chain) throws IOException {
+                Request.Builder builder = chain.request().newBuilder();
+                String token = getToken();
+                if (token != "") {
+                    builder.addHeader("Authorization", token);
+                }
+                return chain.proceed(builder.build());
+            }
+        });
 
         Retrofit.Builder builder = new Retrofit.Builder();
         builder.baseUrl(baseUrl);
@@ -110,6 +148,8 @@ public class MattermostService {
         SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(context);
         String deviceId = sharedPreferences.getString("device_id", null);
         user.deviceId = "android:" + deviceId.toString();
+
+        //return apiClient.attachDevice(user);
         return apiClient.attachDevice(user);
     }
 
@@ -171,7 +211,6 @@ public class MattermostService {
     }
 
     public interface MattermostAPI {
-
         @POST("/api/v1/users/attach_device")
         Promise<User> attachDevice(@Body User user);
 
